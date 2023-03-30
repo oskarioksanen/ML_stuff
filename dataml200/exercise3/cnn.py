@@ -9,16 +9,11 @@ from skimage.io import imread_collection
 from skimage.io import imread
 import os
 
-def create_cnn():
-    model = tf.keras.models.Functional()
-    return model
-
 def load_data(paths, file_spec):
 
     # Yritys imread_collection
     """images = []
     class_labels = []
-
     for class_path, label in paths:
         load_pattern = os.path.join(class_path, file_spec)
         class_im = imread_collection(load_pattern, load_func=)
@@ -41,7 +36,7 @@ def load_data(paths, file_spec):
                 class_labels.append(label)
 
     data = np.array(data)
-    data = data.reshape(-1, 3, 64, 64).astype("float32")
+    #data = data.reshape(-1, 3, 64, 64).astype("float32")
     class_labels = np.array(class_labels)
 
     train_data, test_data, train_labels, test_labels = train_test_split(data,
@@ -60,9 +55,10 @@ def load_data(paths, file_spec):
 
     return [train_data, test_data, train_labels, test_labels]
 
+
 # Main
-class_paths = [(r'C:\Users\oksan\anaconda3\envs\tf\ex2_dataml200\GTSRB_subset_2\GTSRB_subset_2\class1', 0),
-               (r'C:\Users\oksan\anaconda3\envs\tf\ex2_dataml200\GTSRB_subset_2\GTSRB_subset_2\class2', 1)]
+class_paths = [(r'C:\Users\oksan\anaconda3\envs\dataml_200\ex2\GTSRB_subset_2\GTSRB_subset_2\class1', 0),
+               (r'C:\Users\oksan\anaconda3\envs\dataml_200\ex2\GTSRB_subset_2\GTSRB_subset_2\class2', 1)]
 file_spec = '*.jpg'
 
 data = load_data(class_paths, file_spec)
@@ -70,6 +66,9 @@ data = load_data(class_paths, file_spec)
 train_data = data[0]
 test_data = data[1]
 train_labels = data[2]
+# If we use tf.keras.losses.BinaryCrossentropy(from_logits=True) as
+# loss function
+#train_labels = tf.one_hot(train_labels, 2)
 test_labels = data[3]
 
 # Prints for debugging
@@ -78,4 +77,47 @@ print("Testing data shape:", test_data.shape)
 print("Training labels shape:", train_labels.shape)
 print("Testing labels shape:", test_labels.shape)
 
-cnn_model = create_cnn()
+def create_model():
+    model = tf.keras.models.Sequential()
+    # model.add(tf.keras.Input((64, 64, 3))
+    model.add(tf.keras.layers.Conv2D(filters=10,
+                                     kernel_size=(3, 3),
+                                     strides=2,
+                                     activation='relu',
+                                     input_shape=(64, 64, 3)))
+    model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(tf.keras.layers.Conv2D(filters=10,
+                                     kernel_size=(3, 3),
+                                     strides=2,
+                                     activation='relu',
+                                     input_shape=(64, 64, 3)))
+    model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(2, activation='sigmoid'))
+
+    return model
+
+
+ts_identifier = create_model()
+#loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
+loss_fn = loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+ts_identifier.compile(optimizer='SGD',
+                      loss=loss_fn,
+                     metrics=['accuracy'])
+ts_identifier.summary()
+
+history = ts_identifier.fit(train_data, train_labels,
+                 epochs=20,
+                 batch_size=32)
+
+plt.plot(history.history['loss'])
+
+one_hot_preds = ts_identifier.predict(test_data)
+preds = np.argmax(one_hot_preds, axis=1)
+accuracy = accuracy_score(preds, test_labels)
+print()
+print('----------------')
+print(f'Accuracy of CNN: {accuracy:.2f}')
+print('----------------')
+print()
+#evaluations = ts_identifier.evaluate(test_data, test_labels)
