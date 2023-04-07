@@ -114,7 +114,7 @@ print("Testing labels shape:", test_labels.shape)
 ts_identifier = TrafficSignIdentifier()
 
 #loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
-loss_fn = loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
 ts_identifier.compile(optimizer='SGD',
                       loss=loss_fn,
                      metrics=['accuracy'])
