@@ -1,0 +1,244 @@
+import matplotlib.pyplot as plt
+import numpy as np
+#import pandas as pd
+import tensorflow as tf
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+#from sklearn.model_selection import train_test_split
+#from tensorflow.keras import layers, losses
+#from tensorflow.keras.datasets import fashion_mnist
+#from tensorflow.keras.models import Model
+
+NUM_CLASSES = 10
+
+class MnistCNN(tf.keras.Model):
+    def __init__(self):
+        super(MnistCNN, self).__init__()
+        model_input = tf.keras.Input(shape=(28, 28, 1))
+        conv2D_1 = tf.keras.layers.Conv2D(
+            filters=32,
+            kernel_size=(3, 3),
+            strides=2,
+            activation='relu',
+            padding='same',
+        )(model_input)
+        max_pooling_1 = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))(conv2D_1)
+        conv2D_2 = tf.keras.layers.Conv2D(
+            filters=64,
+            kernel_size=(3, 3),
+            strides=2,
+            activation='relu',
+            padding='same',
+        )(max_pooling_1)
+        max_pooling_2 = tf.keras.layers.MaxPooling2D(pool_size=(2, 2))(conv2D_2)
+        flatten = tf.keras.layers.Flatten()(max_pooling_2)
+        model_output = tf.keras.layers.Dense(NUM_CLASSES, activation='sigmoid')(flatten)
+        self.model = tf.keras.Model(inputs=model_input,
+                                    outputs=model_output,
+                                    name="MNIST_cnn_model")
+        self.model.summary()
+
+    def call(self, x):
+        classifier = self.model(x)
+        return classifier
+
+class Denoise(tf.keras.Model):
+    def __init__(self):
+        super(Denoise, self).__init__()
+        self.encoder = None
+        self.decoder = None
+        self.init_encoder()
+        self.encoder.summary()
+        self.init_decoder()
+        self.decoder.summary()
+
+    def init_encoder(self):
+        input_encoder = tf.keras.layers.Input(shape=(28, 28, 1))
+        conv_2D_encoder_1 = tf.keras.layers.Conv2D(filters=16,
+                                                   kernel_size=(3, 3),
+                                                   activation='relu',
+                                                   padding='same',
+                                                   strides=2)(input_encoder)
+        conv_2D_encoder_2 = tf.keras.layers.Conv2D(filters=8,
+                                                   kernel_size=(3, 3),
+                                                   activation='relu',
+                                                   padding='same',
+                                                   strides=2)(conv_2D_encoder_1)
+        self.encoder = tf.keras.Model(inputs=input_encoder,
+                                      outputs=conv_2D_encoder_2,
+                                      name='Encoder')
+
+    def init_decoder(self):
+        input_decoder = tf.keras.layers.Input(shape=(7, 7, 8))
+        conv_2D_decoder_1 = tf.keras.layers.Conv2DTranspose(filters=8,
+                                                   kernel_size=(3, 3),
+                                                   activation='relu',
+                                                   padding='same',
+                                                   strides=2)(input_decoder)
+        conv_2D_decoder_2 = tf.keras.layers.Conv2DTranspose(filters=16,
+                                                   kernel_size=(3, 3),
+                                                   activation='relu',
+                                                   padding='same',
+                                                   strides=2)(conv_2D_decoder_1)
+        output_decoder = tf.keras.layers.Conv2D(filters=1,
+                                                kernel_size=(3, 3),
+                                                activation='sigmoid',
+                                                padding='same')(conv_2D_decoder_2)
+        self.decoder = tf.keras.Model(inputs=input_decoder,
+                                       outputs=output_decoder,
+                                       name='Decoder')
+
+    def call(self, x):
+        encoded = self.encoder(x)
+        decoded = self.decoder(encoded)
+        return decoded
+
+def load_mnist_data():
+
+    fashion_mnist = tf.keras.datasets.fashion_mnist
+    (train_images, train_labels), (test_images, test_labels) = fashion_mnist.load_data()
+
+    train_images = train_images.astype('float32') / 255.0
+    test_images = test_images.astype('float32') / 255.0
+
+    train_images = np.expand_dims(train_images, -1)
+    test_images = np.expand_dims(test_images, -1)
+
+    #print(train_images.shape)
+    #print(test_images.shape)
+    data = dict([('images', dict([('train', train_images), ('test', test_images)])),
+                ('labels',dict([('train', train_labels), ('test', test_labels)]))])
+
+    return data
+
+def add_noise(images, noise_factor=0.2):
+    noisy_imgs = images + noise_factor * tf.random.normal(shape=images.shape)
+    # Make sure values are between 0 and 1 (normalize data)
+    noisy_imgs = tf.clip_by_value(noisy_imgs, clip_value_min=0., clip_value_max=1.)
+    return noisy_imgs
+
+# Main
+
+# Import all the data
+data_dict = load_mnist_data()
+train_images = data_dict['images']['train']
+train_labels = data_dict['labels']['train']
+test_images = data_dict['images']['test']
+test_labels = data_dict['labels']['test']
+train_images_noisy = add_noise(train_images, 0.2)
+test_images_noisy = add_noise(test_images, 0.2)
+
+# Prints for debugging
+print("Training data shape:", train_images.shape)
+print("Testing data shape:", test_images.shape)
+print("Training labels shape:", train_labels.shape)
+print("Testing labels shape:", test_labels.shape)
+
+# Create a CNN model which is trained with clean training images
+cnn_model_clean = MnistCNN()
+loss_function = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+cnn_model_clean.compile(optimizer='SGD',
+                             loss=loss_function,
+                             metrics=['accuracy'])
+history_clean_train = cnn_model_clean.fit(train_images, train_labels,
+                        epochs=1,
+                        shuffle=True,
+                        batch_size=32,
+                        )
+#plt.plot(history_clean_train.history['loss'])
+#plt.show()
+#cnn_model_clean.save(r'C:\Users\oksan\anaconda3\envs\dataml_200\ex4\trained_models')
+
+# Check the accuracy for clean test images
+one_hot_preds_clean = cnn_model_clean.predict(test_images)
+preds_clean = np.argmax(one_hot_preds_clean, axis=1)
+accuracy_clean_test = accuracy_score(preds_clean, test_labels)
+
+# Check the accuracy for noisy test images
+one_hot_preds_noisy = cnn_model_clean.predict(test_images_noisy)
+preds_noisy = np.argmax(one_hot_preds_noisy, axis=1)
+accuracy_noisy_test = accuracy_score(preds_noisy, test_labels)
+
+print()
+print("-----------------")
+print("CNN trained with clean images:")
+print(f'  Accuracy, clean test images: {accuracy_clean_test:.2f}')
+print(f'  Accuracy, noisy test images: {accuracy_noisy_test:.2f}')
+print("-----------------")
+print()
+
+# Create an autoencoder to recreate the noisy images without noise
+autoencoder = Denoise()
+autoencoder.compile(optimizer='adam',
+                    loss=tf.keras.losses.MeanSquaredError())
+autoencoder.fit(train_images_noisy, train_images,
+                epochs=1,
+                shuffle=True,
+                batch_size=32,
+                validation_data=(test_images_noisy, test_images))
+autoencoder.encoder.summary()
+autoencoder.decoder.summary()
+
+#encoded_noisy_test_imgs = autoencoder.encoder(test_images).numpy()
+encoded_noisy_test_imgs = autoencoder.encoder(test_images_noisy).numpy()
+decoded_imgs = autoencoder.decoder(encoded_noisy_test_imgs).numpy()
+
+# Print n number of recreated images which autoencoder produced
+n_imgs = 10
+plt.figure(figsize=(20, 6))
+for i in range(n_imgs):
+    ax = plt.subplot(2, n_imgs, i + 1)
+    plt.title("Noisy imgs")
+    plt.imshow(tf.squeeze(test_images_noisy[i]))
+    plt.gray()
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    bx = plt.subplot(2, n_imgs, i + n_imgs + 1)
+    plt.title("autoencoded")
+    plt.imshow(tf.squeeze(decoded_imgs[i]))
+    plt.gray()
+    bx.get_xaxis().set_visible(False)
+    bx.get_yaxis().set_visible(False)
+
+plt.show()
+
+# Check the accuracy for encoded noisy test images with a CNN model that is
+# trained with clean training images
+one_hot_preds_autoencoded = cnn_model_clean.predict(decoded_imgs)
+preds_autoencoded = np.argmax(one_hot_preds_autoencoded, axis=1)
+accuracy_autoencoded = accuracy_score(preds_autoencoded, test_labels)
+
+print()
+print("-----------------")
+print("CNN trained with clean images:")
+print(f'  Accuracy, autoencoded test images: {accuracy_autoencoded:.2f}')
+print("-----------------")
+print()
+
+# Create a CNN model which is trained with noisy training images
+cnn_model_noisy = MnistCNN()
+
+loss_function = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+cnn_model_noisy.compile(optimizer='SGD',
+                             loss=loss_function,
+                             metrics=['accuracy'])
+history_noisy_train = cnn_model_noisy.fit(train_images_noisy, train_labels,
+                        epochs=1,
+                        shuffle=True,
+                        batch_size=32,
+                        )
+#plt.plot(history_noisy_train.history['loss'])
+#plt.show()
+
+# Check the accuracy for noisy test images with a CNN model that is trained
+# with noisy training images
+one_hot_preds_noisy_train = cnn_model_noisy.predict(test_images_noisy)
+preds_noisy_train = np.argmax(one_hot_preds_noisy_train, axis=1)
+accuracy_training_noisy_test_noisy = accuracy_score(preds_noisy_train, test_labels)
+
+print()
+print("-----------------")
+print("CNN trained with noisy images:")
+print(f'  Accuracy, noisy test images: {accuracy_training_noisy_test_noisy:.2f}')
+print("-----------------")
+print()
