@@ -3,10 +3,7 @@ import numpy as np
 #import pandas as pd
 import tensorflow as tf
 from sklearn.metrics import accuracy_score, precision_score, recall_score
-#from sklearn.model_selection import train_test_split
-#from tensorflow.keras import layers, losses
-#from tensorflow.keras.datasets import fashion_mnist
-#from tensorflow.keras.models import Model
+
 
 NUM_CLASSES = 10
 
@@ -140,12 +137,12 @@ cnn_model_clean.compile(optimizer='SGD',
                              loss=loss_function,
                              metrics=['accuracy'])
 history_clean_train = cnn_model_clean.fit(train_images, train_labels,
-                        epochs=1,
+                        epochs=10,
                         shuffle=True,
                         batch_size=32,
                         )
-#plt.plot(history_clean_train.history['loss'])
-#plt.show()
+plt.plot(history_clean_train.history['loss'])
+plt.show()
 #cnn_model_clean.save(r'C:\Users\oksan\anaconda3\envs\dataml_200\ex4\trained_models')
 
 # Check the accuracy for clean test images
@@ -171,7 +168,7 @@ autoencoder = Denoise()
 autoencoder.compile(optimizer='adam',
                     loss=tf.keras.losses.MeanSquaredError())
 autoencoder.fit(train_images_noisy, train_images,
-                epochs=1,
+                epochs=10,
                 shuffle=True,
                 batch_size=32,
                 validation_data=(test_images_noisy, test_images))
@@ -223,12 +220,12 @@ cnn_model_noisy.compile(optimizer='SGD',
                              loss=loss_function,
                              metrics=['accuracy'])
 history_noisy_train = cnn_model_noisy.fit(train_images_noisy, train_labels,
-                        epochs=1,
+                        epochs=10,
                         shuffle=True,
                         batch_size=32,
                         )
-#plt.plot(history_noisy_train.history['loss'])
-#plt.show()
+plt.plot(history_noisy_train.history['loss'])
+plt.show()
 
 # Check the accuracy for noisy test images with a CNN model that is trained
 # with noisy training images
@@ -242,3 +239,4 @@ print("CNN trained with noisy images:")
 print(f'  Accuracy, noisy test images: {accuracy_training_noisy_test_noisy:.2f}')
 print("-----------------")
 print()
+
