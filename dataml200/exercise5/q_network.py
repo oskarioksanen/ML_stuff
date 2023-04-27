@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 MAX_STEPS = 100
-NUMBER_OF_EPISODES = 1000
+NUMBER_OF_EPISODES = 100
 
 class Buffer():
     def __init__(self, buffer_size, num_of_states):
@@ -65,7 +65,7 @@ class Buffer():
 
 def create_NnetTaxi(num_of_states=500):
     input_layer = tf.keras.layers.Input(shape=(num_of_states,), name="input_layer")
-    dense_1 = tf.keras.layers.Dense(500, activation="relu", name="dense_1")(input_layer)
+    dense_1 = tf.keras.layers.Dense(40, activation="relu", name="dense_1")(input_layer)
     dense_2 = tf.keras.layers.Dense(32, activation="relu", name="dense_2")(dense_1)
     output_layer = tf.keras.layers.Dense(6, activation="linear", name="output_layer")(dense_2)
     mlp_model = tf.keras.Model(inputs=input_layer,
@@ -73,19 +73,24 @@ def create_NnetTaxi(num_of_states=500):
                                  name="Nnet_taxi_driver")
     return mlp_model
 
-def evaluate_policy(q_table, max_steps=MAX_STEPS):
+def evaluate_policy(model, num_states, max_steps=MAX_STEPS):
     episodes_test = 1000
     episode_rewards = []
 
     for episode in range(episodes_test):
         state, info = env_sim.reset()
+        one_hot_state = tf.one_hot(state, num_states)
+        one_hot_state = tf.reshape(one_hot_state, [1, num_states])
         step = 0
         done = False
         total_rewards = 0
 
         while not done and (step < max_steps):
-            action = np.argmax(q_table[state, :])
+            q_net_pred = model.predict(one_hot_state)
+            action = np.argmax(q_net_pred)
             new_state, reward, done, _, info = env_sim.step(action)
+            one_hot_new_state = tf.one_hot(new_state, num_states)
+            one_hot_new_state = tf.reshape(one_hot_new_state, [1, num_states])
             total_rewards += reward
             state = new_state
             step += 1
@@ -102,14 +107,19 @@ def evaluate_policy(q_table, max_steps=MAX_STEPS):
 
     return return_stats
 
-def simulate_best_policy(env, Q, max_steps = MAX_STEPS):
+def simulate_best_policy(env, model, max_steps = MAX_STEPS):
     state, info_state = env.reset()
+    one_hot_state = tf.one_hot(state, num_states)
+    one_hot_state = tf.reshape(one_hot_state, [1, num_states])
     done = False
     total_reward = 0
     steps = 0
     while not done and (steps < max_steps):
-        action = np.argmax(Q[state, :])
+        q_net_pred = model.predict(one_hot_state)
+        action = np.argmax(q_net_pred)
         state, reward, done, _, info_state = env.step(action)
+        one_hot_state = tf.one_hot(state, num_states)
+        one_hot_state = tf.reshape(one_hot_state, [1, num_states])
         env.render()
         total_reward += reward
         steps += 1
@@ -149,7 +159,7 @@ history = [] #evaluation history
 
 buffer = Buffer(1000, num_states)
 tr_batch_size = 100
-tf_freq = 10
+tr_freq = 30
 
 for episode in range(n_episodes):
     print(episode)
@@ -192,7 +202,7 @@ for episode in range(n_episodes):
             episode == NUMBER_OF_EPISODES - 1:
 
         int_policy = np.argmax(q_table, axis=1)
-        int_stats = evaluate_policy(q_table)
+        int_stats = evaluate_policy(model, num_states)
         history.append([episode,
                         int_stats["mean"],
                         int_stats["min"],
@@ -204,7 +214,7 @@ for episode in range(n_episodes):
     #print("Epsilon: ", epsilon, " Episode: ", episode)
     #print("Done: ", done," With: ", steps, "steps")
 
-    if buffer.get_buffer_full():
+    if buffer.get_buffer_full() and episode % tr_freq == 0:
         X = np.zeros((tr_batch_size, num_states))
         Y = np.zeros((tr_batch_size, num_actions))
         for ind, tr_ind in enumerate(np.random.randint(buffer.get_buffer_size(),
@@ -242,7 +252,7 @@ for episode in range(n_episodes):
         model.fit(X, Y, epochs=5, verbose=1)
 
 # Includes "average", "mean", "min", "max", "std"
-print("Policy statistics: ", evaluate_policy(q_table))
+print("Policy statistics: ", evaluate_policy(model, num_states))
 
 # Plot histogram of training episode stats
 history = np.array(history)
@@ -252,7 +262,7 @@ plt.fill_between(history[:, 0], history[:, 1]-history[:, 4], history[:, 1]+histo
 plt.show()
 
 # Watch the best policy
-#simulate_best_policy(env_human, q_table, 20)
+simulate_best_policy(env_human, model, 20)
 
 env_sim.close()
 env_human.close()
