@@ -73,8 +73,9 @@ def create_NnetTaxi(num_of_states=500):
                                  name="Nnet_taxi_driver")
     return mlp_model
 
-def evaluate_policy(model, num_states, max_steps=MAX_STEPS):
-    episodes_test = 1000
+def evaluate_policy(model, num_states, max_steps=10):
+    print("evaluate")
+    episodes_test = 10
     episode_rewards = []
 
     for episode in range(episodes_test):
