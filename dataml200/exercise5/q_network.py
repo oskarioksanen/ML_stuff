@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 MAX_STEPS = 100
-NUMBER_OF_EPISODES = 6000
+NUMBER_OF_EPISODES = 1000
 
 class Buffer():
     def __init__(self, buffer_size, num_of_states):
@@ -18,6 +18,21 @@ class Buffer():
         self.action_buffer_ = np.zeros((buffer_size, 1))
         self.done_buffer_ = np.zeros((buffer_size, 1))
         self.new_state_buffer_ = np.zeros((buffer_size, num_states))
+
+    def get_state(self):
+        return self.state_buffer_
+
+    def get_reward(self):
+        return self.reward_buffer_
+
+    def get_action(self):
+        return self.action_buffer_
+
+    def get_done(self):
+        return self.done_buffer_
+
+    def get_new_state(self):
+        return self.new_state_buffer_
 
     def get_buffer_ind(self):
         return self.buffer_ind_
@@ -50,7 +65,7 @@ class Buffer():
 
 def create_NnetTaxi(num_of_states=500):
     input_layer = tf.keras.layers.Input(shape=(num_of_states,), name="input_layer")
-    dense_1 = tf.keras.layers.Dense(40, activation="relu", name="dense_1")(input_layer)
+    dense_1 = tf.keras.layers.Dense(500, activation="relu", name="dense_1")(input_layer)
     dense_2 = tf.keras.layers.Dense(32, activation="relu", name="dense_2")(dense_1)
     output_layer = tf.keras.layers.Dense(6, activation="linear", name="output_layer")(dense_2)
     mlp_model = tf.keras.Model(inputs=input_layer,
@@ -114,6 +129,11 @@ q_table = np.zeros((num_states, num_actions))
 print("Q table: ", q_table.shape)
 
 model = create_NnetTaxi()
+loss_fn = tf.keras.losses.MeanSquaredError()
+opt = tf.keras.optimizers.Adam(learning_rate=0.001)
+model.compile(optimizer=opt,
+              loss=loss_fn,
+              metrics=['mse'])
 model.summary()
 
 # Parameters
@@ -127,11 +147,12 @@ n_episodes = NUMBER_OF_EPISODES #number of simulation episodes
 max_steps = MAX_STEPS #number of maximum actions in one simulation
 history = [] #evaluation history
 
-buffer = Buffer()
+buffer = Buffer(1000, num_states)
 tr_batch_size = 100
 tf_freq = 10
 
 for episode in range(n_episodes):
+    print(episode)
     state, info_state = env_sim.reset()
     one_hot_state = tf.one_hot(state, num_states)
     one_hot_state = tf.reshape(one_hot_state, [1, num_states])
@@ -139,9 +160,9 @@ for episode in range(n_episodes):
     steps = 0
 
     while not done and (steps < max_steps):
-        print(one_hot_state.shape)
         # Based on epsilon-greedy policy explore sometimes
         if np.random.uniform() > epsilon: # Can try np.random.random() also
+            print(one_hot_state.shape)
             q_net_pred = model.predict(one_hot_state)
             action = np.argmax(q_net_pred)
         else:
@@ -183,7 +204,42 @@ for episode in range(n_episodes):
     #print("Epsilon: ", epsilon, " Episode: ", episode)
     #print("Done: ", done," With: ", steps, "steps")
 
-    # Next train the network!!
+    if buffer.get_buffer_full():
+        X = np.zeros((tr_batch_size, num_states))
+        Y = np.zeros((tr_batch_size, num_actions))
+        for ind, tr_ind in enumerate(np.random.randint(buffer.get_buffer_size(),
+                                                       size=tr_batch_size)):
+            buffer_state = buffer.get_state()
+            #print(buffer_state.shape)
+            #buffer_state = tf.reshape(buffer_state, [1, num_states])
+            #print(buffer_state.shape)
+            one_hot_buf_state = tf.one_hot(buffer_state, num_states)
+            print(one_hot_buf_state.shape)
+            #one_hot_buf_state = tf.reshape(one_hot_buf_state, [1, num_states])
+            new_state_buffer = buffer.get_new_state()
+            #new_state_buffer = tf.reshape(new_state_buffer, [1, num_states])
+            #one_hot_buf_newstate = tf.one_hot(new_state_buffer, num_states)
+            #one_hot_buf_newstate = tf.reshape(one_hot_buf_newstate, [1, num_states])
+            action_buffer = buffer.get_action()
+            done_buffer = buffer.get_done()
+            reward_buffer = buffer.get_reward()
+
+            print(X[ind, :].shape, " ", buffer_state[tr_ind, :].shape)
+            buffer_state_reshaped = tf.reshape(buffer_state[tr_ind, :], [1, num_states])
+            buffer_state_squeezed = tf.squeeze(buffer_state_reshaped)
+            print(buffer_state_reshaped.shape)
+            X[ind, :] = buffer_state_squeezed
+            print(X[ind, :].shape, " ", buffer_state_reshaped.shape)
+            Y[ind, :] = model.predict(buffer_state_reshaped)
+            if done_buffer[tr_ind]:
+                Y[ind, int(action_buffer[tr_ind])] = reward_buffer[tr_ind]
+            else:
+                buffer_new_state_reshaped = tf.reshape(new_state_buffer[tr_ind, :],
+                                                       [1, num_states])
+                Y[ind, int(action_buffer[tr_ind])] = \
+                    reward_buffer[tr_ind] + gamma *\
+                    np.max(model.predict(buffer_new_state_reshaped))
+        model.fit(X, Y, epochs=5, verbose=1)
 
 # Includes "average", "mean", "min", "max", "std"
 print("Policy statistics: ", evaluate_policy(q_table))
